@@ -30,3 +30,11 @@ export const ContactSchema = z.object({
     ),
 });
 export type Contact = z.infer<typeof ContactSchema>;
+
+export const CronType = {
+  Daily: '0 13 * * *',
+  Weekly: '0 13 * * sun',
+  Monthly: '0 13 1 * *',
+} as const;
+export const CronTypeSchema = z.nativeEnum(CronType);
+export type CronType = z.infer<typeof CronTypeSchema>;

@@ -1,17 +1,18 @@
-import {
-  isContactsBirthdayThisMonth,
-  isContactsBirthdayThisWeek,
-  isContactsBirthdayToday,
-} from './date';
-import { sendDiscordWebhook } from './discord';
+import { handleGetBirthdaysResponse, handlePostBirthdayResponse } from './birthdays';
 import {
   BirthdayRequestSchema,
   BirthdayRequestType,
-  ContactSchema,
+  CronType,
+  CronTypeSchema,
   MethodSchema,
   MethodType,
 } from './schemas';
-import { z } from 'zod';
+
+const CronToRequestType = {
+  [CronType.Daily]: BirthdayRequestType.Daily,
+  [CronType.Weekly]: BirthdayRequestType.Weekly,
+  [CronType.Monthly]: BirthdayRequestType.Monthly,
+} satisfies Record<CronType, BirthdayRequestType>;
 
 export interface Env {
   STORAGE_URL: string;
@@ -25,97 +26,43 @@ export default {
       return new Response(null, { status: 405 });
     }
 
-    const contactsResponse = await fetch(`${env.STORAGE_URL}/birthdays.json`, {
-      headers: {
-        'content-type': 'application/json;charset=UTF-8',
-      },
-    });
-
-    if (!contactsResponse.ok) {
-      return new Response(null, { status: 500 });
-    }
-
-    const contacts = await contactsResponse.json();
-    const contactsParseResult = z.array(ContactSchema).safeParse(contacts);
-    if (!contactsParseResult.success) {
-      return new Response(
-        JSON.stringify({
-          error_message: `Error parsing birthdays`,
-          error: JSON.parse(contactsParseResult.error.message),
-        }),
-        {
-          status: 500,
-          headers: {
-            'content-type': 'application/json;charset=UTF-8',
-          },
-        }
-      );
-    }
-
     if (methodParseResult.data === MethodType.POST) {
       const bodyParseResult = BirthdayRequestSchema.safeParse(await request.json());
       if (!bodyParseResult.success) {
         return new Response(null, { status: 400 });
       }
 
-      if (bodyParseResult.data.type === BirthdayRequestType.Daily) {
-        const contactsWithBirthdaysToday = contactsParseResult.data.filter(isContactsBirthdayToday);
-
-        if (contactsWithBirthdaysToday.length > 0) {
-          const webhookResponse = await sendDiscordWebhook({
-            webhook_url: env.WEBHOOK_URL,
-            avatar_url: `${env.STORAGE_URL}/avatar.png`,
-            title: 'Birthdays Today',
-            contacts: contactsWithBirthdaysToday,
-          });
-
-          if (!webhookResponse.ok) {
-            return new Response(null, { status: 500 });
-          }
-        }
-      } else if (bodyParseResult.data.type === BirthdayRequestType.Weekly) {
-        const contactsWithBirthdaysThisWeek = contactsParseResult.data.filter(
-          isContactsBirthdayThisWeek
-        );
-
-        if (contactsWithBirthdaysThisWeek.length > 0) {
-          const webhookResponse = await sendDiscordWebhook({
-            webhook_url: env.WEBHOOK_URL,
-            avatar_url: `${env.STORAGE_URL}/avatar.png`,
-            title: 'Birthdays this Week',
-            contacts: contactsWithBirthdaysThisWeek,
-          });
-
-          if (!webhookResponse.ok) {
-            return new Response(null, { status: 500 });
-          }
-        }
-      } else if (bodyParseResult.data.type === BirthdayRequestType.Monthly) {
-        const contactsWithBirthdaysThisMonth = contactsParseResult.data.filter(
-          isContactsBirthdayThisMonth
-        );
-
-        if (contactsWithBirthdaysThisMonth.length > 0) {
-          const webhookResponse = await sendDiscordWebhook({
-            webhook_url: env.WEBHOOK_URL,
-            avatar_url: `${env.STORAGE_URL}/avatar.png`,
-            title: 'Birthdays this Month',
-            contacts: contactsWithBirthdaysThisMonth,
-          });
-
-          if (!webhookResponse.ok) {
-            return new Response(null, { status: 500 });
-          }
-        }
+      try {
+        await handlePostBirthdayResponse({
+          type: bodyParseResult.data.type,
+          env,
+        });
+        return new Response(null, { status: 200 });
+      } catch (e: any) {
+        console.error(e);
+        return new Response(null, { status: 500 });
       }
-
-      return new Response(null, { status: 200 });
     }
 
-    return new Response(JSON.stringify(contacts, null, 2), {
-      headers: {
-        'content-type': 'application/json;charset=UTF-8',
-      },
-    });
+    try {
+      const contacts = await handleGetBirthdaysResponse({ env });
+      return new Response(JSON.stringify(contacts, null, 2), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+    } catch (e: any) {
+      console.error(e);
+      return new Response(null, { status: 500 });
+    }
+  },
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    const cronParseResult = CronTypeSchema.safeParse(event.cron);
+    if (!cronParseResult.success) {
+      throw new Error('Invalid cron type');
+    }
+
+    await handlePostBirthdayResponse({ type: CronToRequestType[cronParseResult.data], env });
   },
 };
