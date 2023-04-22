@@ -7,13 +7,17 @@ on:
 
 jobs:
   deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
     steps:
-      uses: cloudflare/wrangler-action@2.0.0
-      with:
-        apiToken: ${{ secrets.CF_API_TOKEN }}
-        secrets: |
-          STORAGE_URL
-          WEBHOOK_URL
-      env:
-        SECRET1: ${{ secrets.STORAGE_URL }}
-        SECRET2: ${{ secrets.WEBHOOK_URL }}
+      - uses: actions/checkout@v2
+      - name: Publish
+        uses: cloudflare/wrangler-action@2.0.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          secrets: |
+            STORAGE_URL
+            WEBHOOK_URL
+        env:
+          STORAGE_URL: ${{ secrets.STORAGE_URL }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
