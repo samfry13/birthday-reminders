@@ -1,0 +1,19 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    steps:
+      uses: cloudflare/wrangler-action@2.0.0
+      with:
+        apiToken: ${{ secrets.CF_API_TOKEN }}
+        secrets: |
+          STORAGE_URL
+          WEBHOOK_URL
+      env:
+        SECRET1: ${{ secrets.STORAGE_URL }}
+        SECRET2: ${{ secrets.WEBHOOK_URL }}
